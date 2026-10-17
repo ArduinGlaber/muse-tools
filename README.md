@@ -9,7 +9,7 @@ Cada herramienta vive en `herramientas/<nombre>/` con su propio README y su
 
 | Herramienta | Qué hace | Autor |
 |---|---|---|
-| [pila-ahorro-free](herramientas/pila-ahorro-free/) | Deriva trabajo mecánico a modelos free de OpenRouter (proxy fail-closed, agente de navegación, disciplina de cuota) | [@tu-usuario](https://github.com/tu-usuario) |
+| [pila-ahorro-free](herramientas/pila-ahorro-free/) | Deriva trabajo mecánico a modelos free de OpenRouter (proxy fail-closed, agente de navegación, disciplina de cuota) | [@ArduinGlaber](https://github.com/ArduinGlaber) |
 
 ## Agregar tu herramienta
 
