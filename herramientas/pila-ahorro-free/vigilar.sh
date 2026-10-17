@@ -17,7 +17,13 @@ if ! curl -s -m 10 -x http://127.0.0.1:3130 https://example.com -o /dev/null; th
         # es el relay; si tampoco responde, es el egress y reiniciar no ayuda.
         EGRESS="${https_proxy:-$http_proxy}"
         if [ -n "$EGRESS" ] && curl -s -m 10 -x "$EGRESS" https://example.com -o /dev/null; then
-            echo "$(date -u '+%F %T') relay caido (egress OK), reiniciando supervisor" >> "$LOG"
+            # Diagnóstico en el momento del fallo (para saber POR QUÉ cae)
+            RPID=$(pgrep -f "[r]elay-proxy.py" | head -1)
+            HILOS=$(ls /proc/$RPID/task 2>/dev/null | wc -l)
+            MEM=$(grep MemAvailable /proc/meminfo | awk '{print $2}')
+            TCP="no"
+            (echo > /dev/tcp/127.0.0.1/3130) 2>/dev/null && TCP="si"
+            echo "$(date -u '+%F %T') relay caido (egress OK), reiniciando supervisor [diag: pid=$RPID hilos=$HILOS mem_kb=$MEM tcp=$TCP]" >> "$LOG"
             pkill -f "[r]elay-supervisor.sh" 2>/dev/null
             pkill -f "[r]elay-proxy.py" 2>/dev/null
             # Esperar a que libere el puerto antes de arrancar el nuevo
