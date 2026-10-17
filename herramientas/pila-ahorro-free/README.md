@@ -33,8 +33,18 @@ bash browspark/start-browspark.sh
 # cae a Pollinations gratis si OpenRouter se agota)
 python3 preguntar.py "tu prompt"
 
-# Agente de navegación (tareas rutinarias; gasta ~20 req, chequea presupuesto)
+# Agente de navegación completo (multi-paso no rutinario; gasta ~20 req,
+# chequea presupuesto)
 python3 browspark/agent_free.py "tarea" [pista_sitio]
+
+# Caza determinística (RECOMENDADO para extraer datos de páginas conocidas:
+# 0 peticiones en el camino feliz, 1 si escala al modelo)
+python3 browspark/cazar.py "tarea" --url URL --extraer precio,stock [--ocr]
+
+# Lote: acumula subtareas independientes y las dispara en 1 sola petición
+# (el free cuenta por petición, no por tokens)
+python3 lote.py agregar "prompt" [codigo|texto|razonar]
+python3 lote.py enviar
 
 # Cuota: chequear antes/después de cada tarea derivada
 python3 cuota.py
@@ -50,6 +60,20 @@ python3 leccion.py --ver
 - A la cuota de Muse: razonar, planificar, depurar, verificar lo del free,
   todo lo que sale a un cliente o cuesta dinero si sale mal.
 - Patrón: el free redacta, Muse verifica.
+
+## Economía de peticiones (el free cuenta por petición, no por tokens)
+
+- **Lote** (`lote.py`): N subtareas independientes en 1 petición. El router
+  elige el mejor modelo según el tipo dominante (código/texto/razonar).
+- **Caza** (`browspark/cazar.py`): extracción determinística — navegar,
+  volcar texto, regex (0 peticiones); OCR con Tesseract si el dato está en
+  imagen (0 peticiones); solo escala al modelo (1 petición) si todo falla.
+  Verificado: 16 s y 0 peticiones vs 19 min y ~20 del agente completo.
+- Los 429/502 (fallos) no descuentan del muro diario; solo cuentan los 200.
+
+## Requisito extra (solo rama OCR)
+
+`apt install tesseract-ocr tesseract-ocr-spa`
 
 ## Detalles
 
