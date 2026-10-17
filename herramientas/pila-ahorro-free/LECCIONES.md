@@ -89,6 +89,12 @@ Todo lo aprendido construyendo la pila de ahorro. Reglas operativas, no notas.
 
 ## Registro de lecciones
 
+- 2026-10-17: **cazar.py: extraccion deterministica** — navegar->volcar texto->regex (0 req)->OCR Tesseract (0 req)->solo si falla, 1 llamada al modelo. Verificado: temperatura en timeanddate en 16s con 0 peticiones (vs 19min/~20req del agente). OCR rama verificada (screenshot->tesseract spa+eng->regex). Tesseract: apt install tesseract-ocr tesseract-ocr-spa.
+
+- 2026-10-17: **lote.py: buffer de subtareas** — Acumula subtareas independientes y las dispara en 1 peticion (el free cuenta por peticion, no por tokens). Agrupa por tipo dominante para que el router elija el mejor modelo. Reutiliza preguntar.py (rotacion, cooldown, fallback Pollinations). Verificado: 2 tareas = 1 peticion.
+
+- 2026-10-17: **Reset diario no es a las 00:00 UTC** — El 17/10 a las 09:00 UTC el contador seguia en 54/50 del dia anterior. El reseteo no ocurre a medianoche UTC; hora exacta por determinar (posible ventana movil de 24h).
+
 - 2026-10-17: **Fallback Pollinations cableado** — preguntar.py ahora cae a pollinations/openai-fast cuando OpenRouter se agota o todo esta en cooldown. Verificado con 0/50: los 429 marcaron el muro y el fallback respondio.
 
 - 2026-10-17: **Pollinations.ai como capa fallback** — Texto: solo 1 modelo anonimo (openai-fast/GPT-OSS 20B, con tools), sin clave, ~1 req/15s — muy lento para loops, sirve como overflow cuando OpenRouter esta agotado. Imagenes: Flux siempre gratis sin clave (~7s por 512px) — llena un hueco real (nuestra pila no genera imagenes). Estan migrando a sistema de clave+pollen; lo anonimo puede reducirse. Verificado 16/10.

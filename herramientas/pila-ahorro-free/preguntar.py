@@ -62,6 +62,32 @@ MODELOS = [
     "liquid/lfm-2.5-2.6b:free",
 ]
 
+# Router por tipo de tarea: el mas capaz PARA ESE TIPO primero.
+# (El free cuenta por peticion, no por tokens: siempre el mas potente.)
+TIPOS = {
+    "codigo": [
+        "cohere/north-mini-code:free",      # tool-calling verificado
+        "nvidia/nemotron-3-super-120b-a12b:free",
+        "poolside/laguna-xs-2.1:free",      # especializado en codigo
+        "google/gemma-4-31b-it:free",
+        "liquid/lfm-2.5-2.6b:free",
+    ],
+    "texto": [
+        "nvidia/nemotron-3-super-120b-a12b:free",
+        "google/gemma-4-31b-it:free",
+        "thinkingmachines/inkling:free",
+        "cohere/north-mini-code:free",
+        "liquid/lfm-2.5-2.6b:free",
+    ],
+    "razonar": [
+        "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+        "nvidia/nemotron-3-super-120b-a12b:free",
+        "google/gemma-4-31b-it:free",
+        "thinkingmachines/inkling:free",
+        "liquid/lfm-2.5-2.6b:free",
+    ],
+}
+
 
 def _clasificar_429(modelo, cuerpo):
     if es_muro_diario(cuerpo):
@@ -95,8 +121,9 @@ def preguntar_pollinations(prompt, max_tokens=1500, system=None):
         raise
 
 
-def preguntar(prompt, max_tokens=1500, system=None):
-    modelos = [] if hay_muro() else disponibles(MODELOS)
+def preguntar(prompt, max_tokens=1500, system=None, tipo=None):
+    base = TIPOS.get(tipo, MODELOS)
+    modelos = [] if hay_muro() else disponibles(base)
     messages = []
     if system:
         messages.append({"role": "system", "content": system})
@@ -143,6 +170,7 @@ if __name__ == "__main__":
     else:
         prompt = sys.argv[1]
         max_tokens = int(sys.argv[2]) if len(sys.argv) > 2 else 1500
-        modelo, texto = preguntar(prompt, max_tokens)
+        tipo = sys.argv[3] if len(sys.argv) > 3 else None
+        modelo, texto = preguntar(prompt, max_tokens, tipo=tipo)
         print(f"[modelo: {modelo}]")
         print(texto)

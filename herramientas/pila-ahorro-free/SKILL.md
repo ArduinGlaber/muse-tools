@@ -49,7 +49,35 @@ cualquier modelo de pago.
 
 - Revisa el uso del fallback con `python3 preguntar.py --ver-fallback`.
 
-## Navegación web (caro: unas 20 peticiones por tarea)
+## Lotes (ahorro máximo: N tareas = 1 petición)
+
+- El free cuenta por petición, no por tokens. Acumula subtareas independientes
+  con `python3 lote.py agregar "prompt" [tipo]` (tipos: codigo, texto, razonar)
+  y dispáralas con `python3 lote.py enviar`: una sola petición numerada.
+
+- El router elige el mejor modelo según el tipo dominante del lote. Revisa
+  con `python3 lote.py ver`, descarta con `python3 lote.py limpiar`.
+
+- Úsalo para trabajo mecánico en volumen: secciones de informe, textos,
+  extracciones. No para tareas encadenadas ni urgentes.
+
+## Caza determinística (búsquedas web: 0 a 1 petición)
+
+- Para extraer datos estructurados de una página conocida, usa
+  `python3 browspark/cazar.py "tarea" --url URL --extraer precio,stock`.
+  Navega, vuelca el texto y extrae con regex: 0 peticiones al modelo.
+
+- Si el dato está en imagen, agrega `--ocr`: screenshot a Tesseract
+  (`spa+eng`) y regex sobre el texto. Solo si todo falla escala al modelo
+  con 1 petición.
+
+- Los patrones viven en `browspark/extraer.py` (precio, temperatura,
+  porcentaje, fecha, hora, teléfono, email, stock). Amplíalos con el uso.
+
+- El agente completo `browspark/agent_free.py` queda para tareas multi-paso
+  no rutinarias.
+
+## Navegación web (agente completo)
 
 - Ejecuta `python3 browspark/agent_free.py "tarea" [pista_sitio]`. El agente
   prueba modelos con tool-calling real y rota ante fallos.
