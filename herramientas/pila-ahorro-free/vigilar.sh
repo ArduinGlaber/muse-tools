@@ -33,6 +33,23 @@ if ! curl -s -m 10 -x http://127.0.0.1:3130 https://example.com -o /dev/null; th
         ok=0
     fi
 fi
+# Comportamiento anormal: el relay responde pero con fuga de hilos/FDs
+# (firma del bug corregido; si reaparece, se reinicia)
+RPID=$(pgrep -f "[r]elay-proxy.py" | head -1)
+if [ -n "$RPID" ]; then
+    HILOS=$(ls /proc/$RPID/task 2>/dev/null | wc -l)
+    if [ "$HILOS" -gt 50 ]; then
+        echo "$(date -u '+%F %T') relay con $HILOS hilos (anormal), reiniciando supervisor" >> "$LOG"
+        pkill -f "[r]elay-supervisor.sh" 2>/dev/null
+        pkill -f "[r]elay-proxy.py" 2>/dev/null
+        for i in $(seq 1 10); do
+            (echo > /dev/tcp/127.0.0.1/3130) 2>/dev/null || break
+            sleep 1
+        done
+        nohup bash /home/hatch/workspace/browspark/relay-supervisor.sh >> "$LOG" 2>&1 & disown
+        ok=0
+    fi
+fi
 if ! curl -s -m 5 http://127.0.0.1:9223/mcp -o /dev/null; then
     echo "$(date -u '+%F %T') companion caido, reiniciando" >> "$LOG"
     bash ~/workspace/browspark/start-browspark.sh >> "$LOG" 2>&1

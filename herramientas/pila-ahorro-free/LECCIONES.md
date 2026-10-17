@@ -89,6 +89,8 @@ Todo lo aprendido construyendo la pila de ahorro. Reglas operativas, no notas.
 
 ## Registro de lecciones
 
+- 2026-10-17: **relay: sin reinicios proactivos** — Decision del usuario 17/10: no reiniciar el relay si responde 200 y esta sano. Se elimino el timeout 1500 del supervisor (la rotacion de token era falsa y la fuga esta corregida); el supervisor solo reinicia si el proceso muere. El guardian reinicia solo si no responde o si los hilos >50 (comportamiento anormal).
+
 - 2026-10-17: **relay: fuga de hilos (causa real de las caidas)** — El relay moria cada ~30min NO por rotacion de token (el egress acepta cualquier auth, verificado) sino por fuga: al cerrar el cliente, un hilo quedaba bloqueado en recv() para siempre y el finally nunca cerraba el socket -> 400+ hilos/FDs y CLOSE-WAIT. Fix: cuando una direccion termina, shutdown+close de AMBOS sockets (libera al hilo gemelo) + timeout 120s de inactividad. Verificado: 50 tuneles keep-alive -> 0 fugas.
 
 - 2026-10-17: **cazar.py: extraccion deterministica** — navegar->volcar texto->regex (0 req)->OCR Tesseract (0 req)->solo si falla, 1 llamada al modelo. Verificado: temperatura en timeanddate en 16s con 0 peticiones (vs 19min/~20req del agente). OCR rama verificada (screenshot->tesseract spa+eng->regex). Tesseract: apt install tesseract-ocr tesseract-ocr-spa.
