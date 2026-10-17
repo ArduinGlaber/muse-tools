@@ -13,16 +13,23 @@ if ! curl -s -m 10 -x http://127.0.0.1:3130 https://example.com -o /dev/null; th
     # Reintento antes de declarar caído (evita falsos positivos por lentitud)
     sleep 5
     if ! curl -s -m 10 -x http://127.0.0.1:3130 https://example.com -o /dev/null; then
-        echo "$(date -u '+%F %T') relay caido, reiniciando supervisor" >> "$LOG"
-        pkill -f "[r]elay-supervisor.sh" 2>/dev/null
-        pkill -f "[r]elay-proxy.py" 2>/dev/null
-        # Esperar a que libere el puerto antes de arrancar el nuevo
-        for i in $(seq 1 10); do
-            (echo > /dev/tcp/127.0.0.1/3130) 2>/dev/null || break
-            sleep 1
-        done
-        # El supervisor arranca con el entorno fresco de este shell
-        nohup bash /home/hatch/workspace/browspark/relay-supervisor.sh >> "$LOG" 2>&1 & disown
+        # ¿Es el relay o el egress? Si el egress directo responde, el culpable
+        # es el relay; si tampoco responde, es el egress y reiniciar no ayuda.
+        EGRESS="${https_proxy:-$http_proxy}"
+        if [ -n "$EGRESS" ] && curl -s -m 10 -x "$EGRESS" https://example.com -o /dev/null; then
+            echo "$(date -u '+%F %T') relay caido (egress OK), reiniciando supervisor" >> "$LOG"
+            pkill -f "[r]elay-supervisor.sh" 2>/dev/null
+            pkill -f "[r]elay-proxy.py" 2>/dev/null
+            # Esperar a que libere el puerto antes de arrancar el nuevo
+            for i in $(seq 1 10); do
+                (echo > /dev/tcp/127.0.0.1/3130) 2>/dev/null || break
+                sleep 1
+            done
+            # El supervisor arranca con el entorno fresco de este shell
+            nohup bash /home/hatch/workspace/browspark/relay-supervisor.sh >> "$LOG" 2>&1 & disown
+        else
+            echo "$(date -u '+%F %T') egress lento, relay no reiniciado (se reintenta en 5 min)" >> "$LOG"
+        fi
         ok=0
     fi
 fi
