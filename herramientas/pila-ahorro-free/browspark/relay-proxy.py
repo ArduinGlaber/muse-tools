@@ -45,15 +45,33 @@ def bloqueado(host):
     return any(b in h for b in BLOCKED)
 
 
-def relay(src, dst):
+def relay(src, dst, done):
+    """Copia bytes hasta EOF o hasta que la otra dirección termine.
+    Al terminar, marca done y cierra AMBOS sockets para liberar al otro
+    hilo (sin esto, el hilo gemelo queda bloqueado en recv() para siempre
+    y el socket del cliente muere en CLOSE-WAIT: fuga de hilos y FDs)."""
     try:
-        while True:
-            data = src.recv(65536)
+        while not done.is_set():
+            try:
+                data = src.recv(65536)
+            except socket.timeout:
+                continue
             if not data:
                 break
             dst.sendall(data)
     except OSError:
         pass
+    finally:
+        done.set()
+        for s in (src, dst):
+            try:
+                s.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            try:
+                s.close()
+            except OSError:
+                pass
 
 
 def handle(client):
@@ -93,10 +111,8 @@ def handle(client):
 
         # Reenviar la peticion agregando Proxy-Authorization
         out_lines = [lines[0]]
-        has_auth = False
         for ln in lines[1:]:
             if ln.lower().startswith("proxy-authorization:"):
-                has_auth = True
                 continue
             out_lines.append(ln)
         out_lines.append(f"Proxy-Authorization: {UP_AUTH}")
@@ -104,8 +120,40 @@ def handle(client):
         if rest:
             upstream.sendall(rest)
 
-        t1 = threading.Thread(target=relay, args=(client, upstream), daemon=True)
-        t2 = threading.Thread(target=relay, args=(upstream, client), daemon=True)
+        # Mirar la primera respuesta: 407 = token podrido -> morir para que
+        # el supervisor reinicie con token fresco (codigo 42)
+        upstream.settimeout(15)
+        try:
+            primero = upstream.recv(4096)
+        except socket.timeout:
+            primero = b""
+        if b" 407 " in primero[:60]:
+            try:
+                client.sendall(b"HTTP/1.1 407 Proxy Auth Required\r\n"
+                              b"Content-Length: 0\r\n\r\n")
+            except OSError:
+                pass
+            client.close()
+            upstream.close()
+            print("token podrido (407 del upstream), saliendo", flush=True)
+            os._exit(42)
+        upstream.settimeout(None)
+        if primero:
+            try:
+                client.sendall(primero)
+            except OSError:
+                client.close()
+                upstream.close()
+                return
+
+        # Timeout de inactividad: las conexiones ociosas se recogen solas
+        client.settimeout(120)
+        upstream.settimeout(120)
+        done = threading.Event()
+        t1 = threading.Thread(target=relay, args=(client, upstream, done),
+                              daemon=True)
+        t2 = threading.Thread(target=relay, args=(upstream, client, done),
+                              daemon=True)
         t1.start()
         t2.start()
         t1.join()
@@ -116,6 +164,10 @@ def handle(client):
         try:
             client.close()
         except OSError:
+            pass
+        try:
+            upstream.close()
+        except (OSError, NameError):
             pass
 
 
