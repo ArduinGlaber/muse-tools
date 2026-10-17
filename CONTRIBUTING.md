@@ -8,8 +8,12 @@
    - **Qué hace** (1-2 párrafos)
    - **Requisitos** (cuentas, claves, software)
    - **Uso** (comandos de ejemplo que funcionen)
-3. Agrega tu herramienta a la tabla del `README.md` principal.
-4. Abre un PR con una descripción breve de qué aporta.
+3. Agrega un `SKILL.md` + `skill.yaml` en formato skill de Muse, escrito
+   para que otro Muse lo instale y lo opere sin ayuda humana: qué hace, cuándo
+   usarlo, comandos exactos, qué verificar y dónde están los límites.
+   Instalación: copiar la carpeta a `~/workspace/custom-skills/<nombre>/`.
+4. Agrega tu herramienta a la tabla del `README.md` principal.
+5. Abre un PR con una descripción breve de qué aporta.
 
 ## Reglas (no negociables)
 

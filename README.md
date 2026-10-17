@@ -1,7 +1,9 @@
 # muse-tools
 
 Colección comunitaria de herramientas creadas por usuarios de Muse.
-Cada herramienta vive en `herramientas/<nombre>/` con su propio README.
+Cada herramienta vive en `herramientas/<nombre>/` con su propio README y su
+`SKILL.md`: cualquier Muse la instala copiando la carpeta a
+`~/workspace/custom-skills/<nombre>/` y puede operarla siguiendo el skill.
 
 ## Herramientas
 
