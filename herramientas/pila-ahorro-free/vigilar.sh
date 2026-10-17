@@ -9,35 +9,61 @@ if ! curl -s -m 5 http://127.0.0.1:8123/v1/models -o /dev/null; then
     cd ~/workspace/openrouter-free && nohup python3 proxy.py >> "$LOG" 2>&1 & disown
     ok=0
 fi
-if ! curl -s -m 10 -x http://127.0.0.1:3130 https://example.com -o /dev/null; then
-    # Reintento antes de declarar caído (evita falsos positivos por lentitud)
+FALLOS=~/workspace/openrouter-free/relay-fallos.count
+[ -f "$FALLOS" ] || echo 0 > "$FALLOS"
+
+relay_ok=0
+if curl -s -m 10 -x http://127.0.0.1:3130 https://example.com -o /dev/null; then
+    relay_ok=1
+else
     sleep 5
-    if ! curl -s -m 10 -x http://127.0.0.1:3130 https://example.com -o /dev/null; then
-        # ¿Es el relay o el egress? Si el egress directo responde, el culpable
-        # es el relay; si tampoco responde, es el egress y reiniciar no ayuda.
+    curl -s -m 10 -x http://127.0.0.1:3130 https://example.com -o /dev/null && relay_ok=1
+fi
+
+if [ "$relay_ok" = 1 ]; then
+    echo 0 > "$FALLOS"
+else
+    # El relay no responde al chequeo completo. ¿Proceso muerto o transitorio?
+    if (echo > /dev/tcp/127.0.0.1/3130) 2>/dev/null; then
+        # Acepta TCP: el proceso vive. ¿Es el egress?
         EGRESS="${https_proxy:-$http_proxy}"
-        if [ -n "$EGRESS" ] && curl -s -m 10 -x "$EGRESS" https://example.com -o /dev/null; then
-            # Diagnóstico en el momento del fallo (para saber POR QUÉ cae)
-            RPID=$(pgrep -f "[r]elay-proxy.py" | head -1)
-            HILOS=$(ls /proc/$RPID/task 2>/dev/null | wc -l)
-            MEM=$(grep MemAvailable /proc/meminfo | awk '{print $2}')
-            TCP="no"
-            (echo > /dev/tcp/127.0.0.1/3130) 2>/dev/null && TCP="si"
-            echo "$(date -u '+%F %T') relay caido (egress OK), reiniciando supervisor [diag: pid=$RPID hilos=$HILOS mem_kb=$MEM tcp=$TCP]" >> "$LOG"
-            pkill -f "[r]elay-supervisor.sh" 2>/dev/null
-            pkill -f "[r]elay-proxy.py" 2>/dev/null
-            # Esperar a que libere el puerto antes de arrancar el nuevo
-            for i in $(seq 1 10); do
-                (echo > /dev/tcp/127.0.0.1/3130) 2>/dev/null || break
-                sleep 1
-            done
-            # El supervisor arranca con el entorno fresco de este shell
-            nohup bash /home/hatch/workspace/browspark/relay-supervisor.sh >> "$LOG" 2>&1 & disown
+        if [ -n "$EGRESS" ] && ! curl -s -m 10 -x "$EGRESS" https://example.com -o /dev/null; then
+            echo "$(date -u '+%F %T') egress lento, relay sin reiniciar" >> "$LOG"
+            echo 0 > "$FALLOS"
         else
-            echo "$(date -u '+%F %T') egress lento, relay no reiniciado (se reintenta en 5 min)" >> "$LOG"
+            # Transitorio probable: solo se reinicia si falla 2 ciclos seguidos
+            N=$(($(cat "$FALLOS") + 1))
+            echo "$N" > "$FALLOS"
+            if [ "$N" -ge 2 ]; then
+                RPID=$(pgrep -f "[r]elay-proxy.py" | head -1)
+                HILOS=$(ls /proc/$RPID/task 2>/dev/null | wc -l)
+                MEM=$(grep MemAvailable /proc/meminfo | awk '{print $2}')
+                echo "$(date -u '+%F %T') relay sin responder 2 ciclos (egress OK), reiniciando supervisor [diag: pid=$RPID hilos=$HILOS mem_kb=$MEM]" >> "$LOG"
+                pkill -f "[r]elay-supervisor.sh" 2>/dev/null
+                pkill -f "[r]elay-proxy.py" 2>/dev/null
+                for i in $(seq 1 10); do
+                    (echo > /dev/tcp/127.0.0.1/3130) 2>/dev/null || break
+                    sleep 1
+                done
+                nohup bash /home/hatch/workspace/browspark/relay-supervisor.sh >> "$LOG" 2>&1 & disown
+                echo 0 > "$FALLOS"
+            else
+                echo "$(date -u '+%F %T') relay transitorio (fallo $N/2), sin reinicio" >> "$LOG"
+            fi
         fi
-        ok=0
+    else
+        # No acepta TCP: proceso muerto -> reinicio inmediato
+        echo "$(date -u '+%F %T') relay no acepta TCP (muerto), reiniciando supervisor" >> "$LOG"
+        pkill -f "[r]elay-supervisor.sh" 2>/dev/null
+        pkill -f "[r]elay-proxy.py" 2>/dev/null
+        for i in $(seq 1 10); do
+            (echo > /dev/tcp/127.0.0.1/3130) 2>/dev/null || break
+            sleep 1
+        done
+        nohup bash /home/hatch/workspace/browspark/relay-supervisor.sh >> "$LOG" 2>&1 & disown
+        echo 0 > "$FALLOS"
     fi
+    ok=0
 fi
 # Comportamiento anormal: el relay responde pero con fuga de hilos/FDs
 # (firma del bug corregido; si reaparece, se reinicia)
