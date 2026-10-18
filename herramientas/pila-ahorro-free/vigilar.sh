@@ -12,6 +12,22 @@ fi
 FALLOS=~/workspace/openrouter-free/relay-fallos.count
 [ -f "$FALLOS" ] || echo 0 > "$FALLOS"
 
+# Deteccion proactiva de rotacion de token: si el relay corre con un token
+# viejo, el egress no responde al CONNECT (cuelgue silencioso, no 407).
+# Comparar el token del proceso con el actual; si difieren, reiniciar ya.
+RELAY_PID=$(pgrep -f "relay-proxy.py" | head -1)
+if [ -n "$RELAY_PID" ]; then
+    TOKEN_PROC=$(tr '\0' '\n' < /proc/$RELAY_PID/environ 2>/dev/null | grep "^https_proxy=" | cut -d'@' -f1)
+    TOKEN_ACTUAL=$(echo "${https_proxy:-$http_proxy}" | cut -d'@' -f1)
+    if [ -n "$TOKEN_PROC" ] && [ -n "$TOKEN_ACTUAL" ] && [ "$TOKEN_PROC" != "$TOKEN_ACTUAL" ]; then
+        echo "$(date -u '+%F %T') token roto (proceso vs actual), reiniciando supervisor+relay" >> "$LOG"
+        pkill -f "[r]elay-supervisor.sh"; pkill -f "[r]elay-proxy.py"; sleep 2
+        cd ~/workspace/browspark && nohup bash relay-supervisor.sh >> relay-supervisor.log 2>&1 & disown
+        echo 0 > "$FALLOS"
+        sleep 3
+    fi
+fi
+
 relay_ok=0
 CURL_DIAG=""
 # -f: los errores HTTP (502 del relay cuando el egress esta lento) cuentan como fallo

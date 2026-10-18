@@ -139,3 +139,10 @@ Todo lo aprendido construyendo la pila de ahorro. Reglas operativas, no notas.
 - Fix 3: vigilar.sh usa curl -f para que un 502 cuente como fallo (antes pasaba como OK).
 - Leccion: los reinicios manuales del relay deben matar el supervisor tambien, o el token
   podrido persiste. El guardian (cron) ya lo hace bien porque cada pasada tiene env fresco.
+
+## 2026-10-18 (madrugada): token rota frecuentemente - deteccion proactiva
+- El token del egress rota cada ~30-60 min. El relay lo cachea al arrancar; con token
+  viejo el egress cuelga el CONNECT en silencio.
+- Fix: vigilar.sh compara el token del proceso relay (/proc/PID/environ) con el actual.
+  Si difieren, reinicia supervisor+relay INMEDIATAMENTE (sin esperar 2 fallos).
+- Esto elimina el downtime entre rotacion y deteccion reactiva.
