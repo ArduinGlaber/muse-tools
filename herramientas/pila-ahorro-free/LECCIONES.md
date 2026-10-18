@@ -106,3 +106,18 @@ Todo lo aprendido construyendo la pila de ahorro. Reglas operativas, no notas.
 - 2026-10-17: **primera lección real** — el registro funciona de extremo a extremo
 
 
+
+## 2026-10-17: DeepSeek web como fuente free (reverse engineering completo)
+- La API oficial de DeepSeek NUNCA es gratis; la web chat.deepseek.com si.
+- El token esta en LocalStorage -> `userToken` (se extrae con bookmarklet en movil).
+- Endpoint real: `POST /api/v0/chat/completion` (SINGULAR, no "completions").
+- Payload: {chat_session_id (UUID, crear via POST /api/v0/chat_session/create con {}), parent_message_id, model_type:"default", prompt, ref_file_ids:[], thinking_enabled, search_enabled}.
+- Auth: `Authorization: Bearer <userToken>`.
+- BLOQUEO: requiere header `X-Ds-Pow-Response` (PoW DeepSeekHashV1, dificultad ~144000).
+  - Flujo: POST /api/v0/chat/create_pow_challenge {target_path} -> challenge {algorithm, challenge, salt, signature, difficulty, expire_at}.
+  - Solver: WASM sha3_wasm_bg.7b9ca65ddd.wasm, funcion wasm_solve(retptr, ch_ptr, ch_len, pf_ptr, pf_len, difficulty_f64), prefix=f"{salt}_{expire_at}_".
+  - En Node.js funciona nativo; en Python el binding de memoria de wasmtime da problemas -> usar Node para el PoW.
+  - Header: base64(JSON {algorithm, challenge, salt, signature, answer:int, target_path}).
+- Respuesta: SSE con parches JSON: eventos `data: {"v":"texto"}` se acumulan; ignorar eventos con "p" que no sea content/fragments (ej. FINISHED).
+- Scripts: deepseek-web.py (cliente), deepseek-pow.mjs (solver), sha3_wasm_bg.7b9ca65ddd.wasm.
+- Token en ~/.config/deepseek-usertoken (600), NO en el repo.
