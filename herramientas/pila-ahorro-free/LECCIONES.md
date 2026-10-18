@@ -121,3 +121,8 @@ Todo lo aprendido construyendo la pila de ahorro. Reglas operativas, no notas.
 - Respuesta: SSE con parches JSON: eventos `data: {"v":"texto"}` se acumulan; ignorar eventos con "p" que no sea content/fragments (ej. FINISHED).
 - Scripts: deepseek-web.py (cliente), deepseek-pow.mjs (solver), sha3_wasm_bg.7b9ca65ddd.wasm.
 - Token en ~/.config/deepseek-usertoken (600), NO en el repo.
+
+## 2026-10-17 (noche): DeepSeek integrado a preguntar.py
+- preguntar_deepseek() añadido como fallback 1 (despues de OpenRouter free, antes de Pollinations).
+- Orden: OpenRouter free (legitimo, 50/dia) -> DeepSeek web (sin limite conocido, token propio) -> Pollinations (ultimo recurso).
+- Para tipo="razonar" usa --think (modo DeepThink de la web).

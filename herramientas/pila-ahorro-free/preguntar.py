@@ -1,8 +1,9 @@
 """Pregunta de un solo uso a un modelo FREE (para derivar subtareas).
 
-Uso: python3 preguntar.py "tu prompt" [max_tokens]
+Uso: python3 preguntar.py "tu prompt" [max_tokens] [tipo]
 Prueba modelos por orden de capacidad y usa el primero sano.
 Todo pasa por el proxy fail-closed (solo :free, costo 0).
+Fallbacks: DeepSeek web (sin limite diario) -> Pollinations (lento).
 """
 import datetime
 import json
@@ -121,6 +122,25 @@ def preguntar_pollinations(prompt, max_tokens=1500, system=None):
         raise
 
 
+def preguntar_deepseek(prompt, max_tokens=1500, system=None, think=False):
+    """Fallback via DeepSeek web (token en ~/.config/deepseek-usertoken).
+    Sin limite diario conocido; resuelve PoW con node+WASM (~3-4s/peticion).
+    El system prompt se antepone al prompt (la web no tiene campo system)."""
+    import subprocess
+    if system:
+        prompt = f"Instrucciones: {system}\n\n{prompt}"
+    cmd = [sys.executable, os.path.join(DIR, "deepseek-web.py"), prompt]
+    if think:
+        cmd.append("--think")
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    if r.returncode != 0:
+        raise RuntimeError(f"deepseek-web: {r.stderr.strip()[:200]}")
+    texto = r.stdout.strip()
+    if not texto:
+        raise RuntimeError("deepseek-web: respuesta vacía")
+    return texto
+
+
 def preguntar(prompt, max_tokens=1500, system=None, tipo=None):
     base = TIPOS.get(tipo, MODELOS)
     modelos = [] if hay_muro() else disponibles(base)
@@ -150,6 +170,15 @@ def preguntar(prompt, max_tokens=1500, system=None, tipo=None):
             errores.append(f"{m}: HTTP {e.code}")
         except Exception as e:
             errores.append(f"{m}: {e}")
+    # Fallback 1: DeepSeek web (sin limite diario conocido, buena calidad)
+    try:
+        texto = preguntar_deepseek(prompt, max_tokens, system,
+                                   think=(tipo == "razonar"))
+        if texto:
+            return "deepseek/web", texto
+        errores.append("deepseek: respuesta vacía")
+    except Exception as e:
+        errores.append(f"deepseek: {e}")
     # Fallback final: Pollinations (gratis sin clave, lento pero sin cuota)
     try:
         texto = preguntar_pollinations(prompt, max_tokens, system)
