@@ -176,3 +176,16 @@ Todo lo aprendido construyendo la pila de ahorro. Reglas operativas, no notas.
   - Fallback cruzado: si el primero falla, se intenta el otro, luego Pollinations.
 - Propuesta al usuario: DeepSeek para razonar/codigo complejo, OpenRouter para
   agentes con tools y tareas simples de alto volumen. Aceptada.
+
+## 2026-10-18: causa profunda del "relay wedge" encontrada (3 IAs)
+- Sintoma: relay-slow.log con 38 entradas `peek: 8.01s` — egress acepta TCP
+  (10ms) pero no responde al CONNECT en 8s. Pares ~13s = los 2 curls del vigilar.
+- Veredicto unanime (DeepSeek --think, Groq 120b, Gemini 3.8-flash): la causa
+  esta en el EGRESS, no en nuestro codigo. Un proxy HTTP no responde 200 al
+  CONNECT hasta resolver DNS y conectar al destino; si DNS/IPv6 es lento, se
+  queda en silencio. Nuestro timeout de 8s corta antes de que responda.
+- El relay es inocente (1 hilo, 4 FDs tras 1h15m) y el vigilar.sh ya distingue
+  "egress lento" (no reinicia) de "relay roto".
+- Fix aplicado en relay-proxy.py: TCP_NODELAY en ambos sockets (elimina delay
+  de Nagle de nuestro lado) + slow-log ahora incluye el target para detectar
+  si es especifico de un destino.

@@ -105,6 +105,7 @@ def handle(client):
     import time as _t
     _t0 = _t.monotonic()
     _marks = {}
+    _target = "?"  # para el slow-log aunque falle antes de parsear
     def _mark(name):
         _marks[name] = round(_t.monotonic() - _t0, 2)
     try:
@@ -114,6 +115,7 @@ def handle(client):
         _mark("headers")
         lines = head.decode("latin-1").split("\r\n")
         method, target, version = lines[0].split(" ", 2)
+        _target = target
 
         # Host objetivo: CONNECT host:puerto o URL absoluta
         if method.upper() == "CONNECT":
@@ -133,6 +135,14 @@ def handle(client):
 
         upstream = socket.create_connection((UP_HOST, UP_PORT), timeout=20)
         _mark("upstream_connect")
+        # TCP_NODELAY: evita que Nagle retenga el CONNECT en el buffer
+        # (2026-10-18: causa profunda del "wedge" es el egress lento en
+        # DNS/IPv6, no nuestro codigo; esto elimina nuestra parte del delay)
+        try:
+            upstream.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            client.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except OSError:
+            pass
 
         # Reenviar la peticion agregando Proxy-Authorization
         out_lines = [lines[0]]
@@ -205,12 +215,14 @@ def handle(client):
         except Exception:
             total = -1
         # Log de peticiones lentas: para cazar donde se pierden los 10s
+        # Incluye el host objetivo para detectar si es especifico de un destino
         if total is not None and total > 5:
             try:
                 with open("/home/hatch/workspace/browspark/relay-slow.log",
                           "a") as _lf:
                     _lf.write(f"{_t.strftime('%F %T', _t.gmtime())} "
-                              f"total={total}s marks={_marks}\n")
+                              f"total={total}s marks={_marks} "
+                              f"target={_target}\n")
             except OSError:
                 pass
         try:
