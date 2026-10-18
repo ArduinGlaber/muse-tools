@@ -166,3 +166,13 @@ Todo lo aprendido construyendo la pila de ahorro. Reglas operativas, no notas.
 - La logica del tunel (peek, relay) se mantuvo intacta del original que funcionaba.
 - Comparacion: DeepSeek dio diagnostico cerrado con codigo; OpenRouter (north-mini-code)
   solo brainstorming sin converger. DeepSeek gano.
+
+## 2026-10-18: politica de enrutamiento DeepSeek-first (acordada con el usuario)
+- Comparativa DeepSeek vs OpenRouter (north-mini-code) en diagnostico real:
+  DeepSeek dio causa raiz cerrada con codigo; OpenRouter solo brainstorming.
+- Nueva politica en preguntar.py:
+  - razonar/texto/sin tipo -> DeepSeek primero (ilimitado, mejor razonando)
+  - codigo -> OpenRouter primero (north-mini-code con tool-calling)
+  - Fallback cruzado: si el primero falla, se intenta el otro, luego Pollinations.
+- Propuesta al usuario: DeepSeek para razonar/codigo complejo, OpenRouter para
+  agentes con tools y tareas simples de alto volumen. Aceptada.
