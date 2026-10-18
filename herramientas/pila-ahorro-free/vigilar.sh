@@ -1,12 +1,22 @@
 #!/bin/bash
 # Guardian de la pila free: verifica proxy :8123, relay :3130 y companion :9223.
 # Reinicia lo que este caido. Pensado para correr cada 5 min via cron.
+# Lock: evita ejecuciones concurrentes (el chequeo puede tardar >5 min).
+LOCK=/tmp/vigilar-pila-free.lock
+exec 9>"$LOCK"
+if ! flock -n 9; then
+    echo "$(date -u '+%F %T') otra instancia en curso, saliendo" >> ~/workspace/openrouter-free/vigilar.log
+    exit 0
+fi
 LOG=~/workspace/openrouter-free/vigilar.log
 ok=1
 
+# Lanzamientos de demonios: setsid (NO & disown). En shell no interactivo
+# disown falla silenciosamente (sin job control) y el script queda colgado
+# en do_wait esperando al demonio al terminar; setsid lo desacopla del todo.
 if ! curl -s -m 5 http://127.0.0.1:8123/v1/models -o /dev/null; then
     echo "$(date -u '+%F %T') proxy caido, reiniciando" >> "$LOG"
-    cd ~/workspace/openrouter-free && nohup python3 proxy.py >> "$LOG" 2>&1 & disown
+    cd ~/workspace/openrouter-free && setsid nohup python3 proxy.py >> "$LOG" 2>&1 < /dev/null &
     ok=0
 fi
 FALLOS=~/workspace/openrouter-free/relay-fallos.count
@@ -22,7 +32,7 @@ if [ -n "$RELAY_PID" ]; then
     if [ -n "$TOKEN_PROC" ] && [ -n "$TOKEN_ACTUAL" ] && [ "$TOKEN_PROC" != "$TOKEN_ACTUAL" ]; then
         echo "$(date -u '+%F %T') token roto (proceso vs actual), reiniciando supervisor+relay" >> "$LOG"
         pkill -f "[r]elay-supervisor.sh"; pkill -f "[r]elay-proxy.py"; sleep 2
-        cd ~/workspace/browspark && nohup bash relay-supervisor.sh >> relay-supervisor.log 2>&1 & disown
+        cd ~/workspace/browspark && setsid nohup bash relay-supervisor.sh >> relay-supervisor.log 2>&1 < /dev/null &
         echo 0 > "$FALLOS"
         sleep 3
     fi
@@ -69,7 +79,7 @@ else
                     (echo > /dev/tcp/127.0.0.1/3130) 2>/dev/null || break
                     sleep 1
                 done
-                nohup bash /home/hatch/workspace/browspark/relay-supervisor.sh >> "$LOG" 2>&1 & disown
+                setsid nohup bash /home/hatch/workspace/browspark/relay-supervisor.sh >> "$LOG" 2>&1 < /dev/null &
                 echo 0 > "$FALLOS"
             else
                 echo "$(date -u '+%F %T') relay transitorio (fallo $N/2), sin reinicio [$CURL_DIAG]" >> "$LOG"
@@ -84,7 +94,7 @@ else
             (echo > /dev/tcp/127.0.0.1/3130) 2>/dev/null || break
             sleep 1
         done
-        nohup bash /home/hatch/workspace/browspark/relay-supervisor.sh >> "$LOG" 2>&1 & disown
+        setsid nohup bash /home/hatch/workspace/browspark/relay-supervisor.sh >> "$LOG" 2>&1 < /dev/null &
         echo 0 > "$FALLOS"
     fi
     ok=0
@@ -102,7 +112,7 @@ if [ -n "$RPID" ]; then
             (echo > /dev/tcp/127.0.0.1/3130) 2>/dev/null || break
             sleep 1
         done
-        nohup bash /home/hatch/workspace/browspark/relay-supervisor.sh >> "$LOG" 2>&1 & disown
+        setsid nohup bash /home/hatch/workspace/browspark/relay-supervisor.sh >> "$LOG" 2>&1 < /dev/null &
         ok=0
     fi
 fi
