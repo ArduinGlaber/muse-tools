@@ -153,3 +153,16 @@ Todo lo aprendido construyendo la pila de ahorro. Reglas operativas, no notas.
 - La "deteccion proactiva de token roto" comparaba tokens entre procesos -> siempre
   diferentes -> bucle de reinicios cada 5 min. ELIMINADA.
 - Leccion: no asumir que un valor que cambia entre procesos es "rotacion".
+
+## 2026-10-18: fix DeepSeek aplicado al relay (causa raiz)
+- DIAGNOSTICO: la lectura de headers sin timeout dejaba hilos bloqueados por los
+  preconnects de Chromium -> agotamiento de FDs -> accept() EMFILE sin try/except
+  -> proceso moria -> sin SO_REUSEADDR -> "Address already in use" en bucle.
+- FIX APLICADO: recv_until con deadline 10s, SO_REUSEADDR, accept() con backoff
+  en EMFILE, semaforo BoundedSemaphore(200) + 503, RuntimeError en Thread.start().
+- BUG PROPIO durante la aplicacion: recv_until devolvia el head CON el \r\n\r\n,
+  generando lineas vacias que rompian los headers reenviados (el Proxy-Authorization
+  quedaba como body). Fix: devolver head SIN el delimitador.
+- La logica del tunel (peek, relay) se mantuvo intacta del original que funcionaba.
+- Comparacion: DeepSeek dio diagnostico cerrado con codigo; OpenRouter (north-mini-code)
+  solo brainstorming sin converger. DeepSeek gano.

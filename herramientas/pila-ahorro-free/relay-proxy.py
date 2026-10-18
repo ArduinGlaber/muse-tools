@@ -5,14 +5,41 @@ token ACTUAL del entorno hacia hatch-egress-proxy:3128. Chrome no acepta
 credenciales en --proxy-server, por eso este relay intermedio.
 
 Uso: python3 relay-proxy.py   (lee https_proxy del entorno al arrancar)
+
+Fix 2026-10-18 (DeepSeek): header timeout para preconnects de Chromium.
 """
 import base64
+import errno
 import os
 import socket
 import threading
+import time
 import urllib.parse
 
 LOCAL_PORT = 3130
+HEADER_TIMEOUT = 10.0
+MAX_CONCURRENT = 200
+
+slots = threading.BoundedSemaphore(MAX_CONCURRENT)
+
+
+def recv_until(sock, delim, deadline):
+    """Lee hasta delim con deadline. Sin esto, los preconnects de Chromium
+    (sockets que nunca envian datos) dejan hilos bloqueados para siempre."""
+    buf = b""
+    while delim not in buf:
+        remain = deadline - time.monotonic()
+        if remain <= 0:
+            raise socket.timeout("header deadline")
+        sock.settimeout(remain)
+        chunk = sock.recv(65536)
+        if not chunk:
+            raise ConnectionError("eof in headers")
+        buf += chunk
+        if len(buf) > 256 * 1024:
+            raise ValueError("headers too big")
+    head, _, rest = buf.partition(delim)
+    return head, rest
 
 
 def get_upstream():
@@ -81,19 +108,10 @@ def handle(client):
     def _mark(name):
         _marks[name] = round(_t.monotonic() - _t0, 2)
     try:
-        # Leer cabeceras de la peticion
-        buf = b""
-        while b"\r\n\r\n" not in buf:
-            chunk = client.recv(4096)
-            if not chunk:
-                client.close()
-                return
-            buf += chunk
-            if len(buf) > 65536:
-                client.close()
-                return
+        # Leer cabeceras con deadline: los preconnects no fugan hilos
+        head, rest = recv_until(client, b"\r\n\r\n",
+                               _t.monotonic() + HEADER_TIMEOUT)
         _mark("headers")
-        head, _, rest = buf.partition(b"\r\n\r\n")
         lines = head.decode("latin-1").split("\r\n")
         method, target, version = lines[0].split(" ", 2)
 
@@ -203,16 +221,42 @@ def handle(client):
             upstream.close()
         except (OSError, NameError):
             pass
+        slots.release()
 
 
 def main():
     srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     srv.bind(("127.0.0.1", LOCAL_PORT))
-    srv.listen(50)
+    srv.listen(128)
+    srv.settimeout(1.0)
     while True:
-        client, _ = srv.accept()
-        threading.Thread(target=handle, args=(client,), daemon=True).start()
+        try:
+            client, _ = srv.accept()
+        except socket.timeout:
+            continue
+        except OSError as e:
+            if e.errno in (errno.EMFILE, errno.ENFILE):
+                time.sleep(1.0)  # backoff, NO morir
+                continue
+            time.sleep(0.1)
+            continue
+
+        if not slots.acquire(blocking=False):
+            try:
+                client.sendall(b"HTTP/1.1 503 Busy\r\n\r\n")
+            except OSError:
+                pass
+            client.close()
+            continue
+
+        try:
+            threading.Thread(target=handle, args=(client,),
+                             daemon=True).start()
+        except RuntimeError:  # can't start new thread
+            slots.release()
+            client.close()
+            time.sleep(0.5)
 
 
 if __name__ == "__main__":
