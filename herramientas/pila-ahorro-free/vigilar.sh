@@ -13,11 +13,18 @@ FALLOS=~/workspace/openrouter-free/relay-fallos.count
 [ -f "$FALLOS" ] || echo 0 > "$FALLOS"
 
 relay_ok=0
-if curl -s -m 10 -x http://127.0.0.1:3130 https://example.com -o /dev/null; then
+CURL_DIAG=""
+if curl -s -m 10 -x http://127.0.0.1:3130 https://example.com -o /dev/null -w "%{http_code} %{time_total}s" > /tmp/relay-check-1.txt 2>&1; then
     relay_ok=1
 else
+    C1=$(cat /tmp/relay-check-1.txt 2>/dev/null); EC1=$?
     sleep 5
-    curl -s -m 10 -x http://127.0.0.1:3130 https://example.com -o /dev/null && relay_ok=1
+    if curl -s -m 10 -x http://127.0.0.1:3130 https://example.com -o /dev/null -w "%{http_code} %{time_total}s" > /tmp/relay-check-2.txt 2>&1; then
+        relay_ok=1
+    else
+        C2=$(cat /tmp/relay-check-2.txt 2>/dev/null)
+        CURL_DIAG="curl1[$C1] curl2[$C2]"
+    fi
 fi
 
 if [ "$relay_ok" = 1 ]; then
@@ -38,7 +45,7 @@ else
                 RPID=$(pgrep -f "[r]elay-proxy.py" | head -1)
                 HILOS=$(ls /proc/$RPID/task 2>/dev/null | wc -l)
                 MEM=$(grep MemAvailable /proc/meminfo | awk '{print $2}')
-                echo "$(date -u '+%F %T') relay sin responder 2 ciclos (egress OK), reiniciando supervisor [diag: pid=$RPID hilos=$HILOS mem_kb=$MEM]" >> "$LOG"
+                echo "$(date -u '+%F %T') relay sin responder 2 ciclos (egress OK), reiniciando supervisor [diag: pid=$RPID hilos=$HILOS mem_kb=$MEM $CURL_DIAG]" >> "$LOG"
                 pkill -f "[r]elay-supervisor.sh" 2>/dev/null
                 pkill -f "[r]elay-proxy.py" 2>/dev/null
                 for i in $(seq 1 10); do
@@ -48,7 +55,7 @@ else
                 nohup bash /home/hatch/workspace/browspark/relay-supervisor.sh >> "$LOG" 2>&1 & disown
                 echo 0 > "$FALLOS"
             else
-                echo "$(date -u '+%F %T') relay transitorio (fallo $N/2), sin reinicio" >> "$LOG"
+                echo "$(date -u '+%F %T') relay transitorio (fallo $N/2), sin reinicio [$CURL_DIAG]" >> "$LOG"
             fi
         fi
     else
