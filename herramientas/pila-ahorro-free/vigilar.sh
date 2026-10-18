@@ -14,12 +14,13 @@ FALLOS=~/workspace/openrouter-free/relay-fallos.count
 
 relay_ok=0
 CURL_DIAG=""
-if curl -s -m 10 -x http://127.0.0.1:3130 https://example.com -o /dev/null -w "%{http_code} %{time_total}s" > /tmp/relay-check-1.txt 2>&1; then
+# -f: los errores HTTP (502 del relay cuando el egress esta lento) cuentan como fallo
+if curl -sf -m 10 -x http://127.0.0.1:3130 https://example.com -o /dev/null -w "%{http_code} %{time_total}s" > /tmp/relay-check-1.txt 2>&1; then
     relay_ok=1
 else
     C1=$(cat /tmp/relay-check-1.txt 2>/dev/null); EC1=$?
     sleep 5
-    if curl -s -m 10 -x http://127.0.0.1:3130 https://example.com -o /dev/null -w "%{http_code} %{time_total}s" > /tmp/relay-check-2.txt 2>&1; then
+    if curl -sf -m 10 -x http://127.0.0.1:3130 https://example.com -o /dev/null -w "%{http_code} %{time_total}s" > /tmp/relay-check-2.txt 2>&1; then
         relay_ok=1
     else
         C2=$(cat /tmp/relay-check-2.txt 2>/dev/null)

@@ -129,7 +129,9 @@ def handle(client):
 
         # Mirar la primera respuesta: 407 = token podrido -> morir para que
         # el supervisor reinicie con token fresco (codigo 42)
-        upstream.settimeout(15)
+        # Timeout 8s: si el egress no responde al CONNECT, fallar rapido con
+        # 502 antes de que el cliente (10s) se rinda.
+        upstream.settimeout(8)
         try:
             primero = upstream.recv(4096)
         except socket.timeout:
@@ -146,13 +148,23 @@ def handle(client):
             os._exit(42)
         upstream.settimeout(None)
         _mark("peek")
-        if primero:
+        if not primero:
+            # El egress no respondio al CONNECT en 15s: fallar rapido con 502
+            # en vez de colgar el tunel (el cliente reintenta).
             try:
-                client.sendall(primero)
+                client.sendall(b"HTTP/1.1 502 Egress lento\r\n"
+                              b"Content-Length: 0\r\n\r\n")
             except OSError:
-                client.close()
-                upstream.close()
-                return
+                pass
+            client.close()
+            upstream.close()
+            return
+        try:
+            client.sendall(primero)
+        except OSError:
+            client.close()
+            upstream.close()
+            return
 
         # Timeout de inactividad: las conexiones ociosas se recogen solas
         client.settimeout(120)

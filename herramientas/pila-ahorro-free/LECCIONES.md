@@ -126,3 +126,16 @@ Todo lo aprendido construyendo la pila de ahorro. Reglas operativas, no notas.
 - preguntar_deepseek() añadido como fallback 1 (despues de OpenRouter free, antes de Pollinations).
 - Orden: OpenRouter free (legitimo, 50/dia) -> DeepSeek web (sin limite conocido, token propio) -> Pollinations (ultimo recurso).
 - Para tipo="razonar" usa --think (modo DeepThink de la web).
+
+## 2026-10-17 (noche): causa raiz de los timeouts del relay
+- El slow-log mostro que el egress acepta TCP al instante pero no responde al CONNECT.
+- Causa: el SUPERVISOR tenia un token viejo en su entorno (3d0d9627 vs dd6d8811 actual).
+  Al reiniciar el relay, heredaba el entorno podrido. El egress no devuelve 407 con
+  token podrido: simplemente no responde al CONNECT (cuelgue silencioso).
+- Fix 1: al matar el relay, matar tambien el SUPERVISOR para que renazca con env fresco.
+- Fix 2: relay-proxy.py ahora falla rapido (502 en 8s) si el egress no responde al CONNECT,
+  en vez de colgar 15s. El peek bajo de 15s a 8s para que el 502 salga antes del timeout
+  del cliente (10s).
+- Fix 3: vigilar.sh usa curl -f para que un 502 cuente como fallo (antes pasaba como OK).
+- Leccion: los reinicios manuales del relay deben matar el supervisor tambien, o el token
+  podrido persiste. El guardian (cron) ya lo hace bien porque cada pasada tiene env fresco.
