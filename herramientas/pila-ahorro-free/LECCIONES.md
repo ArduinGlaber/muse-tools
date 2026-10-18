@@ -146,3 +146,10 @@ Todo lo aprendido construyendo la pila de ahorro. Reglas operativas, no notas.
 - Fix: vigilar.sh compara el token del proceso relay (/proc/PID/environ) con el actual.
   Si difieren, reinicia supervisor+relay INMEDIATAMENTE (sin esperar 2 fallos).
 - Esto elimina el downtime entre rotacion y deteccion reactiva.
+
+## 2026-10-18: el token es por-proceso, NO rota - eliminada deteccion
+- Cada proceso nuevo recibe un token DIFERENTE del egress. No es rotacion temporal.
+- El egress acepta CUALQUIER auth (verificado). El token es irrelevante.
+- La "deteccion proactiva de token roto" comparaba tokens entre procesos -> siempre
+  diferentes -> bucle de reinicios cada 5 min. ELIMINADA.
+- Leccion: no asumir que un valor que cambia entre procesos es "rotacion".

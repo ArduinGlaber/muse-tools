@@ -11,32 +11,26 @@ fi
 LOG=~/workspace/openrouter-free/vigilar.log
 ok=1
 
-# Lanzamientos de demonios: setsid (NO & disown). En shell no interactivo
-# disown falla silenciosamente (sin job control) y el script queda colgado
-# en do_wait esperando al demonio al terminar; setsid lo desacopla del todo.
+# Lanzamientos de demonios: sub-shell que cierra el fd 9 del lock antes del
+# exec + disown con job control (set -m). Sin esto el script quedaba colgado
+# en do_wait al terminar: setsid(1) falla con EPERM cuando el subshell del &
+# ya es lider de grupo de procesos (no desacopla nada, el demonio queda como
+# hijo directo) y ademas el lock quedaba retenido por el fd 9 heredado por
+# los demonios. Con set -m, disown si funciona.
+set -m
 if ! curl -s -m 5 http://127.0.0.1:8123/v1/models -o /dev/null; then
     echo "$(date -u '+%F %T') proxy caido, reiniciando" >> "$LOG"
-    cd ~/workspace/openrouter-free && setsid nohup python3 proxy.py >> "$LOG" 2>&1 < /dev/null &
+    ( exec 9>&-; cd ~/workspace/openrouter-free && exec setsid nohup python3 proxy.py >> "$LOG" 2>&1 < /dev/null ) &
+    disown
     ok=0
 fi
 FALLOS=~/workspace/openrouter-free/relay-fallos.count
 [ -f "$FALLOS" ] || echo 0 > "$FALLOS"
 
-# Deteccion proactiva de rotacion de token: si el relay corre con un token
-# viejo, el egress no responde al CONNECT (cuelgue silencioso, no 407).
-# Comparar el token del proceso con el actual; si difieren, reiniciar ya.
-RELAY_PID=$(pgrep -f "relay-proxy.py" | head -1)
-if [ -n "$RELAY_PID" ]; then
-    TOKEN_PROC=$(tr '\0' '\n' < /proc/$RELAY_PID/environ 2>/dev/null | grep "^https_proxy=" | cut -d'@' -f1)
-    TOKEN_ACTUAL=$(echo "${https_proxy:-$http_proxy}" | cut -d'@' -f1)
-    if [ -n "$TOKEN_PROC" ] && [ -n "$TOKEN_ACTUAL" ] && [ "$TOKEN_PROC" != "$TOKEN_ACTUAL" ]; then
-        echo "$(date -u '+%F %T') token roto (proceso vs actual), reiniciando supervisor+relay" >> "$LOG"
-        pkill -f "[r]elay-supervisor.sh"; pkill -f "[r]elay-proxy.py"; sleep 2
-        cd ~/workspace/browspark && setsid nohup bash relay-supervisor.sh >> relay-supervisor.log 2>&1 < /dev/null &
-        echo 0 > "$FALLOS"
-        sleep 3
-    fi
-fi
+# NOTA 2026-10-18: se ELIMINO la deteccion de "token roto" por comparacion.
+# Cada proceso recibe un token DIFERENTE del egress (es por-proceso, no rota
+# en el tiempo), y el egress acepta CUALQUIER auth. Comparar tokens entre
+# procesos siempre da diferente -> bucle de reinicios. El token es irrelevante.
 
 relay_ok=0
 CURL_DIAG=""
@@ -79,7 +73,12 @@ else
                     (echo > /dev/tcp/127.0.0.1/3130) 2>/dev/null || break
                     sleep 1
                 done
-                setsid nohup bash /home/hatch/workspace/browspark/relay-supervisor.sh >> "$LOG" 2>&1 < /dev/null &
+                if (echo > /dev/tcp/127.0.0.1/3130) 2>/dev/null; then
+                    echo "$(date -u '+%F %T') relay no murio con TERM, aplicando KILL" >> "$LOG"
+                    pkill -9 -f "[r]elay-proxy.py" 2>/dev/null; sleep 1
+                fi
+                ( exec 9>&-; exec setsid nohup bash /home/hatch/workspace/browspark/relay-supervisor.sh >> "$LOG" 2>&1 < /dev/null ) &
+                disown
                 echo 0 > "$FALLOS"
             else
                 echo "$(date -u '+%F %T') relay transitorio (fallo $N/2), sin reinicio [$CURL_DIAG]" >> "$LOG"
@@ -94,7 +93,12 @@ else
             (echo > /dev/tcp/127.0.0.1/3130) 2>/dev/null || break
             sleep 1
         done
-        setsid nohup bash /home/hatch/workspace/browspark/relay-supervisor.sh >> "$LOG" 2>&1 < /dev/null &
+        if (echo > /dev/tcp/127.0.0.1/3130) 2>/dev/null; then
+            echo "$(date -u '+%F %T') relay no murio con TERM, aplicando KILL" >> "$LOG"
+            pkill -9 -f "[r]elay-proxy.py" 2>/dev/null; sleep 1
+        fi
+        ( exec 9>&-; exec setsid nohup bash /home/hatch/workspace/browspark/relay-supervisor.sh >> "$LOG" 2>&1 < /dev/null ) &
+        disown
         echo 0 > "$FALLOS"
     fi
     ok=0
@@ -112,13 +116,18 @@ if [ -n "$RPID" ]; then
             (echo > /dev/tcp/127.0.0.1/3130) 2>/dev/null || break
             sleep 1
         done
-        setsid nohup bash /home/hatch/workspace/browspark/relay-supervisor.sh >> "$LOG" 2>&1 < /dev/null &
+        if (echo > /dev/tcp/127.0.0.1/3130) 2>/dev/null; then
+            echo "$(date -u '+%F %T') relay no murio con TERM, aplicando KILL" >> "$LOG"
+            pkill -9 -f "[r]elay-proxy.py" 2>/dev/null; sleep 1
+        fi
+        ( exec 9>&-; exec setsid nohup bash /home/hatch/workspace/browspark/relay-supervisor.sh >> "$LOG" 2>&1 < /dev/null ) &
+        disown
         ok=0
     fi
 fi
 if ! curl -s -m 5 http://127.0.0.1:9223/mcp -o /dev/null; then
     echo "$(date -u '+%F %T') companion caido, reiniciando" >> "$LOG"
-    bash ~/workspace/browspark/start-browspark.sh >> "$LOG" 2>&1
+    ( exec 9>&-; exec timeout 120 bash ~/workspace/browspark/start-browspark.sh >> "$LOG" 2>&1 )
     ok=0
 fi
 [ $ok -eq 1 ] || echo "$(date -u '+%F %T') restauracion intentada" >> "$LOG"
