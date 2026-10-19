@@ -37,6 +37,20 @@ def is_free(model_id):
     )
 
 
+def _log_403(motivo):
+    """Auditoría fail-closed (2026-10-19, vía Tizatown): cada 403 queda
+    registrado con fecha/hora en proxy-403.log."""
+    try:
+        from datetime import datetime, timezone
+        linea = f"{datetime.now(timezone.utc).isoformat()} 403 {motivo}\n"
+        log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "proxy-403.log")
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(linea)
+    except Exception:
+        pass
+
+
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *args):
         raise RuntimeError("redirect refused")
@@ -76,12 +90,22 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         model = payload.get("model", "")
-        # Fail-closed: solo :free
+        # Fail-closed: solo :free.
+        # Endurecimiento (2026-10-19, vía Tizatown): además de validar `model`,
+        # se rechaza el campo `models` (array de fallback de OpenRouter) que
+        # podría colar un modelo de pago aunque `model` sea :free.
+        motivo_403 = None
         if not is_free(model):
+            motivo_403 = f"modelo no :free: {model!r}"
+        elif "models" in payload:
+            motivo_403 = f"campo 'models' no permitido: {payload.get('models')!r}"
+        if motivo_403:
+            _log_403(motivo_403)
             self._send_json(403, {
                 "error": {
                     "message": "fail-closed: solo modelos :free permitidos",
                     "model": model,
+                    "detalle": motivo_403,
                 }
             })
             return
