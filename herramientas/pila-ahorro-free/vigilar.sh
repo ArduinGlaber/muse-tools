@@ -127,7 +127,11 @@ if [ -n "$RPID" ]; then
 fi
 if ! curl -s -m 5 http://127.0.0.1:9223/mcp -o /dev/null; then
     echo "$(date -u '+%F %T') companion caido, reiniciando" >> "$LOG"
-    ( exec 9>&-; exec timeout 120 bash ~/workspace/browspark/start-browspark.sh >> "$LOG" 2>&1 )
+    # SKIP_RELAY=1: el relay ya lo lanzo este script via relay-supervisor.sh;
+    # que start-browspark.sh lo arranque directo compite por el puerto 3130
+    # (2026-10-19: el supervisor salia con EADDRINUSE y el relay quedaba sin
+    # supervisor). El bloque companion solo arranca el companion.
+    ( exec 9>&-; exec env SKIP_RELAY=1 timeout 120 bash ~/workspace/browspark/start-browspark.sh >> "$LOG" 2>&1 )
     ok=0
 fi
 [ $ok -eq 1 ] || echo "$(date -u '+%F %T') restauracion intentada" >> "$LOG"

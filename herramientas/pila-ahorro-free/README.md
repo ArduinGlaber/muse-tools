@@ -1,8 +1,10 @@
 # pila-ahorro-free
 
-Deriva trabajo mecánico a modelos de IA gratuitos de OpenRouter sin gastar
-la cuota de Muse. Todo pasa por un proxy fail-closed que bloquea cualquier
-modelo de pago (imposible gastar por error).
+Deriva trabajo mecánico a modelos de IA gratuitos sin gastar la cuota de
+Muse: APIs directas (Groq, Gemini, Cloudflare, Zhipu, FreeAI, Nvidia),
+DeepSeek web (cliente propio con PoW) y OpenRouter/Pollinations como
+respaldo. Todo pasa por un proxy fail-closed que bloquea cualquier modelo
+de pago (imposible gastar por error).
 
 ## Requisito previo (una vez)
 
@@ -10,6 +12,16 @@ modelo de pago (imposible gastar por error).
 2. Guárdala en la bóveda de Muse como conector `custom.openrouter`
    (placement `bearer_header`, host `openrouter.ai`). Ver
    `custom-connectors/CONNECTOR.md`.
+3. Para las APIs directas, cada clave va en la bóveda con su conector
+   (`custom.groq`, `custom.gemini`, `custom.cloudflare`, `custom.zhipu`,
+   `custom.freeai`, `custom.nvidia`). Ver `herramientas/conectores-free/`.
+4. Para DeepSeek web, el `userToken` va en `~/.config/deepseek-usertoken`
+   (modo 600). Procedimiento en `deepseek-token.md`. Caduca: si ves
+   40003 INVALID_TOKEN, pide uno nuevo.
+5. Para Cloudflare, el Account ID va en la variable
+   `CLOUDFLARE_ACCOUNT_ID` o en `~/.config/cloudflare-account`. Nunca en
+   el código (el auto-descubrimiento vía GET /accounts no funciona con
+   un token de alcance limitado: devuelve lista vacía).
 3. El tier gratuito da ~50 peticiones/día (verificado: el muro real cae en
    ~53/50). Con 10 créditos comprados sube a 1000/día.
 
@@ -32,6 +44,14 @@ bash browspark/start-browspark.sh
 # Pregunta suelta a un modelo free (rota por capacidad, con cooldown;
 # cae a Pollinations gratis si OpenRouter se agota)
 python3 preguntar.py "tu prompt"
+
+# Con tipo y tema: el tema manda las preguntas al mismo chat de DeepSeek
+# (recuerda el contexto); tema nuevo = chat nuevo. Máx 10 temas, 7 días.
+python3 preguntar.py "tu prompt" 1500 texto cotizaciones
+
+# DeepSeek web directo: --seguir continúa el último chat del tema
+python3 deepseek-web.py "tu prompt" --sesion=cotizaciones --seguir
+python3 deepseek-web.py --cerrar --sesion=cotizaciones  # cierra el tema
 
 # Agente de navegación completo (multi-paso no rutinario; gasta ~20 req,
 # chequea presupuesto)
@@ -56,6 +76,9 @@ python3 leccion.py --ver
 
 ## Política de enrutamiento
 
+- Orden por tipo: `codigo` → Groq 120B, Gemini, DeepSeek; `texto` y
+  `razonar` → DeepSeek web primero, luego Groq, Gemini, Cloudflare,
+  Zhipu, FreeAI, Nvidia, OpenRouter free, Pollinations.
 - Al free: borradores, resúmenes, código simple, extraer datos, clasificar.
 - A la cuota de Muse: razonar, planificar, depurar, verificar lo del free,
   todo lo que sale a un cliente o cuesta dinero si sale mal.

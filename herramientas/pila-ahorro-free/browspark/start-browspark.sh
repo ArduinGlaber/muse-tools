@@ -6,10 +6,17 @@ set -e
 export PATH="/opt/hatch-image/bin:$PATH"
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Relay 127.0.0.1:3130 (si no corre ya)
+# Relay 127.0.0.1:3130 (si no corre ya).
+# SKIP_RELAY=1: el relay lo gestiona relay-supervisor.sh (lo lanza vigilar.sh);
+# arrancar aqui el relay directo compite con el supervisor por el puerto 3130
+# (carrera al arrancar toda la pila: el supervisor salia con EADDRINUSE y el
+# relay quedaba sin supervisor). El vigilar.sh pone SKIP_RELAY=1; el uso
+# manual de este script conserva el arranque directo.
+if [ -z "$SKIP_RELAY" ]; then
 if ! curl -s -m 3 -x http://127.0.0.1:3130 https://example.com -o /dev/null; then
   nohup python3 "$DIR/relay-proxy.py" > "$DIR/relay-proxy.log" 2>&1 &
   sleep 1
+fi
 fi
 
 # Companion (si no corre ya)

@@ -1,0 +1,25 @@
+# Secretos y credenciales: nunca van al repo (regla del CONTRIBUTING).
+# Las claves y tokens viven en la boveda de Muse; los IDs de cuenta
+# en variables de entorno o en ~/.config (fuera del repo).
+# (deepseek-token.md SI va: es documentacion, no contiene el token.)
+*usertoken*
+*cloudflare-account*
+*.pem
+*.key
+.env
+.env.*
+
+# Estado local de ejecucion (contadores, uso, sesiones, logs).
+__pycache__/
+*.pyc
+*.log
+*.jsonl
+uso-*.json
+cooldown-*.json
+pollinations-*.json
+lote-buffer.json
+relay-fallos.count
+deepseek-sesion*.json
+*.bak
+*.bak-*
+.DS_Store

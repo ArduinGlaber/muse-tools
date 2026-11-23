@@ -5,14 +5,41 @@ token ACTUAL del entorno hacia hatch-egress-proxy:3128. Chrome no acepta
 credenciales en --proxy-server, por eso este relay intermedio.
 
 Uso: python3 relay-proxy.py   (lee https_proxy del entorno al arrancar)
+
+Fix 2026-10-18 (DeepSeek): header timeout para preconnects de Chromium.
 """
 import base64
+import errno
 import os
 import socket
 import threading
+import time
 import urllib.parse
 
 LOCAL_PORT = 3130
+HEADER_TIMEOUT = 10.0
+MAX_CONCURRENT = 200
+
+slots = threading.BoundedSemaphore(MAX_CONCURRENT)
+
+
+def recv_until(sock, delim, deadline):
+    """Lee hasta delim con deadline. Sin esto, los preconnects de Chromium
+    (sockets que nunca envian datos) dejan hilos bloqueados para siempre."""
+    buf = b""
+    while delim not in buf:
+        remain = deadline - time.monotonic()
+        if remain <= 0:
+            raise socket.timeout("header deadline")
+        sock.settimeout(remain)
+        chunk = sock.recv(65536)
+        if not chunk:
+            raise ConnectionError("eof in headers")
+        buf += chunk
+        if len(buf) > 256 * 1024:
+            raise ValueError("headers too big")
+    head, _, rest = buf.partition(delim)
+    return head, rest
 
 
 def get_upstream():
@@ -75,21 +102,20 @@ def relay(src, dst, done):
 
 
 def handle(client):
+    import time as _t
+    _t0 = _t.monotonic()
+    _marks = {}
+    _target = "?"  # para el slow-log aunque falle antes de parsear
+    def _mark(name):
+        _marks[name] = round(_t.monotonic() - _t0, 2)
     try:
-        # Leer cabeceras de la peticion
-        buf = b""
-        while b"\r\n\r\n" not in buf:
-            chunk = client.recv(4096)
-            if not chunk:
-                client.close()
-                return
-            buf += chunk
-            if len(buf) > 65536:
-                client.close()
-                return
-        head, _, rest = buf.partition(b"\r\n\r\n")
+        # Leer cabeceras con deadline: los preconnects no fugan hilos
+        head, rest = recv_until(client, b"\r\n\r\n",
+                               _t.monotonic() + HEADER_TIMEOUT)
+        _mark("headers")
         lines = head.decode("latin-1").split("\r\n")
         method, target, version = lines[0].split(" ", 2)
+        _target = target
 
         # Host objetivo: CONNECT host:puerto o URL absoluta
         if method.upper() == "CONNECT":
@@ -108,6 +134,15 @@ def handle(client):
             return
 
         upstream = socket.create_connection((UP_HOST, UP_PORT), timeout=20)
+        _mark("upstream_connect")
+        # TCP_NODELAY: evita que Nagle retenga el CONNECT en el buffer
+        # (2026-10-18: causa profunda del "wedge" es el egress lento en
+        # DNS/IPv6, no nuestro codigo; esto elimina nuestra parte del delay)
+        try:
+            upstream.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            client.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except OSError:
+            pass
 
         # Reenviar la peticion agregando Proxy-Authorization
         out_lines = [lines[0]]
@@ -122,7 +157,9 @@ def handle(client):
 
         # Mirar la primera respuesta: 407 = token podrido -> morir para que
         # el supervisor reinicie con token fresco (codigo 42)
-        upstream.settimeout(15)
+        # Timeout 8s: si el egress no responde al CONNECT, fallar rapido con
+        # 502 antes de que el cliente (10s) se rinda.
+        upstream.settimeout(8)
         try:
             primero = upstream.recv(4096)
         except socket.timeout:
@@ -138,13 +175,24 @@ def handle(client):
             print("token podrido (407 del upstream), saliendo", flush=True)
             os._exit(42)
         upstream.settimeout(None)
-        if primero:
+        _mark("peek")
+        if not primero:
+            # El egress no respondio al CONNECT en 15s: fallar rapido con 502
+            # en vez de colgar el tunel (el cliente reintenta).
             try:
-                client.sendall(primero)
+                client.sendall(b"HTTP/1.1 502 Egress lento\r\n"
+                              b"Content-Length: 0\r\n\r\n")
             except OSError:
-                client.close()
-                upstream.close()
-                return
+                pass
+            client.close()
+            upstream.close()
+            return
+        try:
+            client.sendall(primero)
+        except OSError:
+            client.close()
+            upstream.close()
+            return
 
         # Timeout de inactividad: las conexiones ociosas se recogen solas
         client.settimeout(120)
@@ -158,9 +206,25 @@ def handle(client):
         t2.start()
         t1.join()
         t2.join()
+        _mark("done")
     except Exception:
         pass
     finally:
+        try:
+            total = round(_t.monotonic() - _t0, 2)
+        except Exception:
+            total = -1
+        # Log de peticiones lentas: para cazar donde se pierden los 10s
+        # Incluye el host objetivo para detectar si es especifico de un destino
+        if total is not None and total > 5:
+            try:
+                with open("/home/hatch/workspace/browspark/relay-slow.log",
+                          "a") as _lf:
+                    _lf.write(f"{_t.strftime('%F %T', _t.gmtime())} "
+                              f"total={total}s marks={_marks} "
+                              f"target={_target}\n")
+            except OSError:
+                pass
         try:
             client.close()
         except OSError:
@@ -169,16 +233,42 @@ def handle(client):
             upstream.close()
         except (OSError, NameError):
             pass
+        slots.release()
 
 
 def main():
     srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     srv.bind(("127.0.0.1", LOCAL_PORT))
-    srv.listen(50)
+    srv.listen(128)
+    srv.settimeout(1.0)
     while True:
-        client, _ = srv.accept()
-        threading.Thread(target=handle, args=(client,), daemon=True).start()
+        try:
+            client, _ = srv.accept()
+        except socket.timeout:
+            continue
+        except OSError as e:
+            if e.errno in (errno.EMFILE, errno.ENFILE):
+                time.sleep(1.0)  # backoff, NO morir
+                continue
+            time.sleep(0.1)
+            continue
+
+        if not slots.acquire(blocking=False):
+            try:
+                client.sendall(b"HTTP/1.1 503 Busy\r\n\r\n")
+            except OSError:
+                pass
+            client.close()
+            continue
+
+        try:
+            threading.Thread(target=handle, args=(client,),
+                             daemon=True).start()
+        except RuntimeError:  # can't start new thread
+            slots.release()
+            client.close()
+            time.sleep(0.5)
 
 
 if __name__ == "__main__":

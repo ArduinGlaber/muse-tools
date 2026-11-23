@@ -1,8 +1,10 @@
 # Ahorro de cuota con modelos free
 
-Deriva el trabajo mecánico a modelos gratuitos de OpenRouter y Pollinations
-sin gastar tu cuota de Muse. Todo pasa por un proxy fail-closed que bloquea
-cualquier modelo de pago.
+Deriva el trabajo mecánico a modelos gratuitos sin gastar tu cuota de
+Muse: APIs directas gratuitas (Groq, Gemini, Cloudflare, Zhipu, FreeAI,
+Nvidia), DeepSeek web (cliente propio con PoW, ver `deepseek-token.md`) y
+OpenRouter/Pollinations como respaldo. Todo pasa por un proxy fail-closed
+que bloquea cualquier modelo de pago.
 
 ## Cuándo usarlo
 
@@ -22,8 +24,23 @@ cualquier modelo de pago.
   con el conector `custom.openrouter` (placement `bearer_header`, host
   `openrouter.ai`). Lee `custom-connectors/CONNECTOR.md` para el setup.
 
-- Nunca pongas la clave en archivos, código o chat. El proxy la inyecta
-  desde la bóveda.
+- Las APIs directas necesitan su clave en la bóveda con su conector
+  (`custom.groq`, `custom.gemini`, `custom.cloudflare`, `custom.zhipu`,
+  `custom.freeai`, `custom.nvidia`, `custom.openrouter`): cada helper
+  `test_*.py` la lee desde ahí, nunca desde el código.
+
+- DeepSeek web necesita el `userToken` del usuario guardado en
+  `~/.config/deepseek-usertoken` (modo 600). Procedimiento en
+  `deepseek-token.md`. El token caduca; si `deepseek-web.py` devuelve
+  40003 INVALID_TOKEN, hay que pedir uno nuevo.
+
+- Cloudflare necesita el Account ID: variable `CLOUDFLARE_ACCOUNT_ID` o
+  archivo `~/.config/cloudflare-account`. Nunca va en el código: el
+  auto-descubrimiento vía GET /accounts no funciona con un token de
+  alcance limitado (devuelve lista vacía).
+
+- Nunca pongas claves, tokens ni IDs de cuenta en archivos, código o
+  chat. El proxy las inyecta desde la bóveda.
 
 ## Arrancar los servicios
 
@@ -40,8 +57,21 @@ cualquier modelo de pago.
 
 ## Consultas sueltas (barato: 1 a 2 peticiones)
 
-- Ejecuta `python3 preguntar.py "tu prompt" [max_tokens]`. Prueba modelos
-  por orden de capacidad y usa el primero sano.
+- Ejecuta `python3 preguntar.py "tu prompt" [max_tokens] [tipo] [tema]`.
+  Tipos: `codigo`, `texto`, `razonar`. El router prueba modelos por orden
+  de capacidad y usa el primero sano; para razonar y texto DeepSeek web
+  va primero.
+
+- Con `tema` (una palabra, p. ej. `cotizaciones`) las preguntas van al
+  mismo chat de DeepSeek y recuerdan el contexto; tema nuevo = chat nuevo.
+  Máximo 10 temas, un tema sin uso 7 días se cierra solo. Sin `tema` cada
+  llamada abre un chat nuevo. Cierra un tema con
+  `python3 deepseek-web.py --cerrar --sesion=<tema>`.
+
+- `deepseek-web.py` directo: `python3 deepseek-web.py "prompt" [--seguir]`
+  continúa el último chat; `--nuevo` fuerza uno nuevo; `--sesion=<tema>`
+  elige el chat del tema. El estado vive en `deepseek-sesion*.json`
+  (local, nunca va al repo).
 
 - Si OpenRouter se agota o todo está en cooldown, cae solo a Pollinations
   gratis (`pollinations/openai-fast`), respetando su límite de 1 petición

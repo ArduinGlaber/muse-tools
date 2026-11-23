@@ -1,5 +1,5 @@
 name: "pila_ahorro_free"
 title: "Ahorro de cuota con modelos free"
-description: "Deriva borradores, resúmenes, búsquedas web y código simple a modelos gratuitos de OpenRouter y Pollinations con proxy fail-closed, sin gastar la cuota de Muse."
+description: "Deriva borradores, resúmenes, búsquedas web y código simple a modelos gratuitos (APIs directas, DeepSeek web, OpenRouter y Pollinations) con proxy fail-closed, sin gastar la cuota de Muse."
 category: "Work and knowledge"
 include_in_prompt: false
