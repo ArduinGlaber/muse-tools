@@ -1,0 +1,50 @@
+{
+  "_nota": "Límites free tier verificados el 2026-10-18/19. Los proveedores los cambian sin aviso: re-verificar cada pocos meses.",
+  "cloudflare": {
+    "fuente": "freellmapi.co/best-free-llm-apis-2026 (oct 2026)",
+    "modelo_ref": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+    "neuronas_dia": 10000
+  },
+  "gemini": {
+    "fuente": "klymentiev.com/blog/gemini-api-free-tier (oct 2026); Google solo publica el número exacto en la consola de AI Studio",
+    "modelo_ref": "gemini-2.5-flash (clase Flash)",
+    "reset": "medianoche hora del Pacífico",
+    "rpd": 1500,
+    "rpm": 10,
+    "tpm": 250000
+  },
+  "groq": {
+    "fuente": "console.groq.com/docs/rate-limits (ago 2026)",
+    "modelo_ref": "openai/gpt-oss-20b",
+    "rpd": 1000,
+    "rpm": 30,
+    "tpd": 200000,
+    "tpm": 8000
+  },
+  "openrouter": {
+    "fuente": "connector custom.openrouter (verificado 2026-10-16)",
+    "modelos_ref": "modelos :free",
+    "nota": "Ya se trackea aparte en ~/workspace/openrouter-free/uso.py",
+    "rpd": 50
+  },
+  "nvidia": {
+    "fuente": "dev.to/klukyanov (oct 2026, probado); github.com/mvalentsev/awesome-free-ai-coding (verificado 2026-10-13)",
+    "modelo_ref": "z-ai/glm-5.3-flash (Free Endpoint)",
+    "rpm": 40,
+    "rpd": 10000,
+    "nota": "Los 1000 créditos de bienvenida se eliminaron: ahora 'ilimitado' en cantidad, solo limita el ritmo (40 RPM) y el techo de 10K/día por cuenta. Sin tarjeta; requiere cuenta NVIDIA Developer Program + teléfono verificado en país soportado. Solo modelos con insignia 'Free Endpoint'."
+  },
+  "zhipu": {
+    "fuente": "docs.z.ai (oct 2026); dev.to/tariqnasser (oct 2026)",
+    "modelo_ref": "glm-4.7-flash",
+    "nota": "Modelos Flash (glm-4.7-flash, glm-4.6v-flash) gratis en entrada/salida. Límite: 1 petición concurrente. Sin tarjeta. Verificación 2026-10-19: la clave autentica (sin 401) pero el endpoint devolvió 429/1305 (sobrecarga temporal) — pendiente confirmar 200."
+  },
+  "freeai": {
+    "fuente": "free.ai/api + freetokens.custats.info (oct 2026)",
+    "modelo_ref": "qwen7b (Qwen 3.6 35B)",
+    "rpm": 60,
+    "rpm_mes": 1000,
+    "tokens_dia": 30000,
+    "nota": "Plan Free: 30.000 tokens/día (free pool), 1.000 peticiones API/mes, 60 req/min, 0 USD. Verificado 200 OK el 2026-10-19. Además de chat: TTS (kokoro…), STT (whisper), imagen (sdxl), traducción, todo en el free pool."
+  }
+}

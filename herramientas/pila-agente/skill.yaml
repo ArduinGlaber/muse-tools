@@ -1,0 +1,5 @@
+name: "pila_agente"
+title: "Lazo agéntico ReAct sobre la pila free"
+description: "Agente ReAct prototipo que resuelve tareas de varios pasos con herramientas (shell, archivos, web, grupos de Facebook) usando solo modelos gratuitos de pila-ahorro-free, sin gastar la cuota de Muse."
+category: "Work and knowledge"
+include_in_prompt: false

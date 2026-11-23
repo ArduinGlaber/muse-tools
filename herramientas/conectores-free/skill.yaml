@@ -1,0 +1,5 @@
+name: "conectores_free"
+title: "Conectores de APIs gratuitas"
+description: "Siete conectores de modelos gratuitos (Groq, Gemini, Cloudflare, Zhipu, FreeAI, OpenRouter, Nvidia) con claves en la bóveda de Muse y registro propio de cuotas, para alimentar pila-ahorro-free."
+category: "Work and knowledge"
+include_in_prompt: false
